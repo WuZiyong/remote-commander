@@ -1,0 +1,9 @@
+{
+  "name": "comput1",
+  "roots": ["/home/your-user/work"],
+  "allow_shell": false,
+  "read_only": false,
+  "max_file_bytes": 2097152,
+  "max_output_bytes": 1048576,
+  "max_sessions": 64
+}

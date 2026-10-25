@@ -1,0 +1,6 @@
+{
+  "devices": [
+    {"id": "comput1", "url": "http://127.0.0.1:18765/mcp", "token_env": "RC_COMPUT1_TOKEN"},
+    {"id": "mac", "url": "http://127.0.0.1:28765/mcp", "token_env": "RC_MAC_TOKEN"}
+  ]
+}

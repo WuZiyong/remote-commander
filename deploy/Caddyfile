@@ -1,0 +1,10 @@
+# Optional TLS front end. Put a real hostname here and pass
+# --allowed-host mcp.example.com to the agent. Keep token authentication enabled.
+mcp.example.com {
+    request_body {
+        max_size 5MB
+    }
+    reverse_proxy 127.0.0.1:8765 {
+        flush_interval -1
+    }
+}

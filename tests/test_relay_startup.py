@@ -19,6 +19,11 @@ def test_crontab_preserves_existing_jobs():
     assert updated.startswith(original)
     assert updated.count("@reboot /our/supervisor") == 1
     assert installer.merge_crontab(updated, "/our/supervisor") == updated
+    bridge = installer.merge_crontab(updated, "/our/bridge", "# BEGIN BRIDGE", "# END BRIDGE")
+    assert "@reboot /our/supervisor" in bridge and "@reboot /our/bridge" in bridge
+    assert (
+        installer.merge_crontab(bridge, "/our/bridge", "# BEGIN BRIDGE", "# END BRIDGE") == bridge
+    )
     with pytest.raises(ValueError):
         installer.merge_crontab(updated + installer.BEGIN, "/x")
 

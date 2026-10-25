@@ -10,6 +10,7 @@ import subprocess
 import threading
 import time
 import uuid
+from contextlib import suppress
 from dataclasses import dataclass, field
 
 import psutil
@@ -54,7 +55,8 @@ class Job:
         finally:
             self.process.wait()
             self.process.stdout.close()
-            self.process.stdin.close()
+            with suppress(BrokenPipeError, OSError, ValueError):
+                self.process.stdin.close()
             with self.condition:
                 self.complete = True
                 self.condition.notify_all()

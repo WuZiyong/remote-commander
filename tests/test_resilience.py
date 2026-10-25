@@ -45,6 +45,8 @@ def test_bounded_input_does_not_block(runtime):
             assert "queue full" in str(error)
     assert time.monotonic() - start < 1
     runtime.processes.force_terminate(started["session_id"])
+    result, _ = finish(runtime.processes, started["session_id"])
+    assert result["state"] == "finished"
 
 
 def test_search_cap_and_special_file(runtime, tmp_path):

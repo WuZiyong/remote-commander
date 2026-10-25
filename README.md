@@ -87,7 +87,15 @@ gateway 默认走 stdio。客户端通用配置如下；替换为真实绝对路
 
 也可在单台机器以 `agent --config ... --transport stdio` 运行，无需 HTTP token。
 
-支持自定义 HTTP headers 的 MCP 客户端可直接连接 agent 的 `/mcp`，发送 `Authorization: Bearer <token>`。gateway 也可用 `--transport http --port 8875` 提供统一 HTTP 入口（另设 `RC_TOKEN`）。此版本提供私有网络/SSH 场景下的静态 Bearer 鉴权，未实现 OAuth 浏览器登录，不宣称能直接接入要求 OAuth 的 ChatGPT 连接器。浏览器 Origin 请求被拒绝。
+支持自定义 HTTP headers 的 MCP 客户端可直接连接 agent 的 `/mcp`，发送 `Authorization: Bearer <token>`。gateway 也可用 `--transport http --port 8875` 提供统一 HTTP 入口（另设 `RC_TOKEN`）。这些私有 agent 端点使用静态 Bearer 鉴权，浏览器 Origin 请求被拒绝。
+
+### 在 ChatGPT 中使用
+
+ChatGPT 入口采用 **owner-private Sites MCP 插件**，OAuth、资源发现与登录由 Sites 平台管理，不另建密码系统。源码在 `cloud/`；已部署入口和插件信息见交付说明。通过 Sites 发布会生成对应私有插件，可以在 ChatGPT 中启用它来选择设备和调用工具。
+
+comput1 的常驻桥接只通过出站 HTTPS 连接私有入口；Mac 通过独立的反向 SSH 隧道作为另一台设备接入。comput1 的使用不依赖 Mac 在线。云端队列中的请求和结果使用 AES-256-GCM 加密，五分钟后过期；桥接失联的已领取操作不会自动重新执行。慢操作通过新增的 `get_operation_result` 获取，避免重复写文件或启动命令。
+
+不要扩大 Site 的共享范围；Site 访问权同时决定谁可以调用远程工具。
 
 ## 工具
 
@@ -125,6 +133,16 @@ systemctl --user daemon-reload
 systemctl --user enable --now remote-commander
 journalctl --user -u remote-commander -f
 ```
+
+用户级 systemd 不可用时，可安装当前用户的开机和故障恢复任务，不需要 sudo：
+
+```sh
+.venv/bin/python scripts/install_linux_service.py --config .runtime/agent.json --env-file .runtime/agent.env
+```
+
+安装器保留已有 crontab 并保存备份，仅管理自己的标记区块。`@reboot` 启动单实例 supervisor；agent 退出后约五秒恢复，cron 每五分钟检查 supervisor。文件锁避免重复启动，日志在 `.runtime/service/` 中轮转。
+
+同一安装器使用 `--kind bridge --site https://你的私有Site地址 --gateway-config .runtime/cloud-devices.json --env-file .runtime/cloud-bridge.env` 安装独立桥接服务，状态和日志在 `.runtime/bridge-service/`，不影响 agent 的区块。
 
 macOS 可用 `scripts/install_launchd.py` 安装用户级服务。Windows 可在任务计划程序中用当前用户运行 `.venv\Scripts\remote-commander.exe agent --config 绝对路径`，配置环境变量并隐藏窗口。
 

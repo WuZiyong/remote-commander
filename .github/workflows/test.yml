@@ -18,3 +18,16 @@ jobs:
       - run: python -m pytest -q
       - run: ruff check src tests scripts
       - run: ruff format --check src tests scripts
+  cloud:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --test tests/relay.test.mjs
+        working-directory: cloud
+      - run: node scripts/build.mjs
+        working-directory: cloud
+      - run: node scripts/validate-artifact.mjs
+        working-directory: cloud

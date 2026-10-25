@@ -11,3 +11,5 @@ config.local.json
 devices.local.json
 *.log
 .runtime/
+core
+core.*

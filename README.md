@@ -21,7 +21,7 @@ MCP 客户端 ── stdio/HTTP ── gateway ── MCP HTTP + 每台独立 to
 git clone git@github.com:WuZiyong/remote-commander.git
 cd remote-commander
 python3 -m venv .venv
-.venv/bin/python -m pip install -e '.[dev]'
+.venv/bin/python -m pip install -c constraints.txt -e '.[dev]'
 ```
 
 Windows 对应 `.venv\Scripts\python.exe` 和 `.venv\Scripts\remote-commander.exe`。运行命令无需激活环境。
@@ -67,6 +67,8 @@ ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 \
 ```
 
 gateway 默认走 stdio。客户端通用配置如下；替换为真实绝对路径，并通过客户端的安全环境变量机制注入 token：
+
+也可以将密钥存入权限为 600 的私有 `.env` 文件，用 `--env-file /绝对路径/gateway.env` 加载。文件仅允许 `RC_` 前缀的变量。这样客户端配置无需包含密钥本身。
 
 ```json
 {
@@ -125,6 +127,8 @@ journalctl --user -u remote-commander -f
 ```
 
 macOS 可用 `scripts/install_launchd.py` 安装用户级服务。Windows 可在任务计划程序中用当前用户运行 `.venv\Scripts\remote-commander.exe agent --config 绝对路径`，配置环境变量并隐藏窗口。
+
+macOS 安装示例：`.venv/bin/python scripts/install_launchd.py --config /绝对路径/agent.json --env-file /绝对路径/agent.env`；统一 HTTP 网关增加 `--mode gateway --port 8875`。安装器拒绝覆盖现有同名服务。
 
 公网部署需要自己的域名、TLS 和网络访问控制；`deploy/Caddyfile` 是可选反向代理模板。没有自动申请外部主机或改变既有远程访问设置。
 

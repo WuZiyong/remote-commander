@@ -85,7 +85,6 @@ def main():
                 timeout_keep_alive=10,
                 timeout_graceful_shutdown=5,
                 limit_concurrency=64,
-                timeout_notify=30,
             )
     except (OSError, ValueError) as exc:
         parser.exit(2, f"Configuration/startup error: {exc}\n")

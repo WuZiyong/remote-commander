@@ -13,6 +13,7 @@ def main():
     parser.add_argument("--config", required=True)
     parser.add_argument("--env-file", required=True)
     parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--mode", choices=["agent", "gateway"], default="agent")
     args = parser.parse_args()
     if sys.platform != "darwin":
         parser.error("This installer is for macOS only")
@@ -22,7 +23,7 @@ def main():
         parser.error("Install the package in .venv first")
     config, env = Path(args.config).resolve(strict=True), Path(args.env_file).resolve(strict=True)
     env.chmod(0o600)
-    label = "local.remote-commander.agent"
+    label = "local.remote-commander." + args.mode
     target = Path.home() / "Library/LaunchAgents" / (label + ".plist")
     if target.exists():
         parser.error(f"Service already exists: {target}; review it before replacing")
@@ -37,7 +38,9 @@ def main():
         "ThrottleInterval": 10,
         "ProgramArguments": [
             str(command),
-            "agent",
+            args.mode,
+            "--transport",
+            "http",
             "--config",
             str(config),
             "--env-file",
@@ -45,8 +48,8 @@ def main():
             "--port",
             str(args.port),
         ],
-        "StandardOutPath": str(logs / "agent.stdout.log"),
-        "StandardErrorPath": str(logs / "agent.stderr.log"),
+        "StandardOutPath": str(logs / (args.mode + ".stdout.log")),
+        "StandardErrorPath": str(logs / (args.mode + ".stderr.log")),
     }
     with target.open("xb") as stream:
         plistlib.dump(payload, stream)

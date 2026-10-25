@@ -16,13 +16,6 @@ log = logging.getLogger("remote_commander.audit")
 
 
 def create_server(runtime: Runtime | Gateway, hosts: list[str] | None = None) -> FastMCP:
-    @asynccontextmanager
-    async def lifespan(server):
-        try:
-            yield {}
-        finally:
-            runtime.close()
-
     mcp = FastMCP(
         "Remote Commander",
         instructions=(
@@ -33,7 +26,6 @@ def create_server(runtime: Runtime | Gateway, hosts: list[str] | None = None) ->
         ),
         stateless_http=True,
         json_response=True,
-        lifespan=lifespan,
         transport_security=TransportSecuritySettings(
             enable_dns_rebinding_protection=True,
             allowed_hosts=hosts or ["127.0.0.1:*", "localhost:*", "[::1]:*"],
@@ -222,3 +214,20 @@ def create_server(runtime: Runtime | Gateway, hosts: list[str] | None = None) ->
         return await call("stop_search", deviceId, session_id=session_id)
 
     return mcp
+
+
+def create_http_app(mcp: FastMCP, runtime: Runtime | Gateway):
+    """Tie cleanup to the ASGI server, not each stateless MCP request."""
+    app = mcp.streamable_http_app()
+    original = app.router.lifespan_context
+
+    @asynccontextmanager
+    async def lifespan(app):
+        try:
+            async with original(app):
+                yield
+        finally:
+            runtime.close()
+
+    app.router.lifespan_context = lifespan
+    return app

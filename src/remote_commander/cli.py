@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 from .config import AgentConfig, GatewayConfig, read_config
 from .runtime import Gateway, Runtime
 from .security import Guard
-from .server import create_server
+from .server import create_http_app, create_server
 
 
 def main():
@@ -69,10 +69,13 @@ def main():
         hosts = args.allowed_host or ["127.0.0.1:*", "localhost:*", "[::1]:*"]
         mcp = create_server(runtime, hosts)
         if args.transport == "stdio":
-            mcp.run(transport="stdio")
+            try:
+                mcp.run(transport="stdio")
+            finally:
+                runtime.close()
         else:
             app = Guard(
-                mcp.streamable_http_app(),
+                create_http_app(mcp, runtime),
                 os.environ.get(args.token_env, ""),
                 max_body_bytes=(config.max_file_bytes * 2 + 65536)
                 if isinstance(config, AgentConfig)

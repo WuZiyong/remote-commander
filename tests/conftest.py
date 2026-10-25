@@ -8,7 +8,7 @@ import uvicorn
 from remote_commander.config import AgentConfig
 from remote_commander.runtime import Runtime
 from remote_commander.security import Guard
-from remote_commander.server import create_server
+from remote_commander.server import create_http_app, create_server
 
 
 @pytest.fixture
@@ -27,7 +27,9 @@ def live_agent(runtime):
     mcp = create_server(runtime)
     server = uvicorn.Server(
         uvicorn.Config(
-            Guard(mcp.streamable_http_app(), token), log_level="error", timeout_graceful_shutdown=2
+            Guard(create_http_app(mcp, runtime), token),
+            log_level="error",
+            timeout_graceful_shutdown=2,
         )
     )
     thread = threading.Thread(target=server.run, kwargs={"sockets": [sock]}, daemon=True)

@@ -93,7 +93,9 @@ gateway 默认走 stdio。客户端通用配置如下；替换为真实绝对路
 
 ChatGPT 入口采用 **owner-private Sites MCP 插件**，OAuth、资源发现与登录由 Sites 平台管理，不另建密码系统。源码在 `cloud/`；已部署入口和插件信息见交付说明。通过 Sites 发布会生成对应私有插件，可以在 ChatGPT 中启用它来选择设备和调用工具。
 
-comput1 的常驻桥接只通过出站 HTTPS 连接私有入口；Mac 通过独立的反向 SSH 隧道作为另一台设备接入。comput1 的使用不依赖 Mac 在线。云端队列中的请求和结果使用 AES-256-GCM 加密，五分钟后过期；桥接失联的已领取操作不会自动重新执行。慢操作通过新增的 `get_operation_result` 获取，避免重复写文件或启动命令。
+常驻桥接通过出站 HTTPS 连接私有入口。当前验收部署将桥接运行在 Mac，再通过已有 SSH 隧道连接 comput1；使用此入口时 Mac 需要保持在线。comput1 直接访问 Sites 会收到 Cloudflare 安全层的 403，因此没有启用该机器直接访问 Sites 的桥接任务。comput1 自身的 agent 已配置开机启动和故障恢复。
+
+云端队列中的请求和结果使用 AES-256-GCM 加密，五分钟后过期；桥接失联的已领取操作不会自动重新执行。慢操作通过新增的 `get_operation_result` 获取，避免重复写文件或启动命令。
 
 不要扩大 Site 的共享范围；Site 访问权同时决定谁可以调用远程工具。
 

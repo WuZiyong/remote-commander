@@ -1,9 +1,15 @@
 [
   {
     "name": "list_devices",
-    "description": "List configured machines, identity and current online/offline status.",
+    "description": "List devices and online status. detail=full includes host, user and Python identity.",
     "inputSchema": {
-      "properties": {},
+      "properties": {
+        "detail": {
+          "type": "string",
+          "enum": ["compact", "full"],
+          "default": "compact"
+        }
+      },
       "title": "list_devicesArguments",
       "type": "object"
     },

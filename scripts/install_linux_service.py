@@ -36,21 +36,36 @@ def merge_crontab(existing: str, command: str, begin: str = BEGIN, end: str = EN
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--kind", choices=["agent", "bridge"], default="agent")
+    parser.add_argument("--kind", choices=["agent", "bridge", "tunnel"], default="agent")
     parser.add_argument("--config")
     parser.add_argument("--site")
     parser.add_argument("--gateway-config")
-    parser.add_argument("--env-file", required=True)
+    parser.add_argument("--env-file")
+    parser.add_argument("--ssh-config")
+    parser.add_argument("--ssh-host")
     args = parser.parse_args()
     if sys.platform != "linux":
         parser.error("This installer requires Linux")
     os.umask(0o077)
     project = Path(__file__).resolve().parent.parent
-    state = project / (".runtime/service" if args.kind == "agent" else ".runtime/bridge-service")
+    state = (
+        project
+        / {
+            "agent": ".runtime/service",
+            "bridge": ".runtime/bridge-service",
+            "tunnel": ".runtime/tunnel-service",
+        }[args.kind]
+    )
     state.mkdir(parents=True, exist_ok=True)
-    secret = Path(args.env_file).resolve(strict=True)
-    secret.chmod(0o600)
-    if args.kind == "agent":
+    if args.kind == "tunnel":
+        if not args.ssh_config or not args.ssh_host or args.ssh_host.startswith("-"):
+            parser.error("A tunnel needs --ssh-config and a non-option --ssh-host")
+        config = Path(args.ssh_config).resolve(strict=True)
+        config.chmod(0o600)
+        child = ["/usr/bin/ssh", "-F", str(config), "-NT", args.ssh_host]
+    elif not args.env_file:
+        parser.error("--env-file is required for an agent or bridge")
+    elif args.kind == "agent":
         if not args.config:
             parser.error("--config is required for an agent")
         config = Path(args.config).resolve(strict=True)
@@ -68,6 +83,10 @@ def main():
             "--gateway-config",
             str(config),
         ]
+    if args.kind != "tunnel":
+        secret = Path(args.env_file).resolve(strict=True)
+        secret.chmod(0o600)
+        child += ["--env-file", str(secret)]
     command = [
         sys.executable,
         "-m",
@@ -76,8 +95,6 @@ def main():
         str(state),
         "--",
         *child,
-        "--env-file",
-        str(secret),
     ]
     launch = "/usr/bin/nohup " + shlex.join(command)
     launch += " >> " + shlex.quote(str(state / "launcher.log")) + " 2>&1 </dev/null &"
@@ -89,12 +106,9 @@ def main():
     original = previous.stdout
     stamp = datetime.datetime.now(datetime.UTC).strftime("%Y%m%dT%H%M%SZ")
     (state / ("crontab.before." + stamp)).write_text(original)
-    updated = (
-        merge_crontab(original, launch)
-        if args.kind == "agent"
-        else merge_crontab(
-            original, launch, "# BEGIN REMOTE_COMMANDER_BRIDGE", "# END REMOTE_COMMANDER_BRIDGE"
-        )
+    marker = {"agent": "SERVICE", "bridge": "BRIDGE", "tunnel": "TUNNEL"}[args.kind]
+    updated = merge_crontab(
+        original, launch, f"# BEGIN REMOTE_COMMANDER_{marker}", f"# END REMOTE_COMMANDER_{marker}"
     )
     subprocess.run(["crontab", "-"], input=updated, text=True, check=True)
     subprocess.Popen(

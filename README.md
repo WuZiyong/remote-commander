@@ -93,7 +93,7 @@ gateway 默认走 stdio。客户端通用配置如下；替换为真实绝对路
 
 ChatGPT 入口采用 **owner-private Sites MCP 插件**，OAuth、资源发现与登录由 Sites 平台管理，不另建密码系统。源码在 `cloud/`；已部署入口和插件信息见交付说明。通过 Sites 发布会生成对应私有插件，可以在 ChatGPT 中启用它来选择设备和调用工具。
 
-常驻桥接通过出站 HTTPS 连接私有入口。当前验收部署将桥接运行在 Mac，再通过已有 SSH 隧道连接 comput1；使用此入口时 Mac 需要保持在线。comput1 直接访问 Sites 会收到 Cloudflare 安全层的 403，因此没有启用该机器直接访问 Sites 的桥接任务。comput1 自身的 agent 已配置开机启动和故障恢复。
+常驻桥接通过出站 HTTPS 连接私有入口。当前部署运行在 AIP 的 erebos，由 AIP 的专用 SSH 隧道直接连接 comput1；**Mac 关机不影响 comput1**。AIP 的 agent、桥接和隧道，以及 comput1 的 agent，均已配置开机启动和故障恢复。Mac 在线时可通过自己的反向 SSH 隧道作为可选设备接入，详见 [AIP 部署说明](deploy/AIP.md)。
 
 云端队列中的请求和结果使用 AES-256-GCM 加密，五分钟后过期；桥接失联的已领取操作不会自动重新执行。慢操作通过新增的 `get_operation_result` 获取，避免重复写文件或启动命令。
 
@@ -145,6 +145,8 @@ journalctl --user -u remote-commander -f
 安装器保留已有 crontab 并保存备份，仅管理自己的标记区块。`@reboot` 启动单实例 supervisor；agent 退出后约五秒恢复，cron 每五分钟检查 supervisor。文件锁避免重复启动，日志在 `.runtime/service/` 中轮转。
 
 同一安装器使用 `--kind bridge --site https://你的私有Site地址 --gateway-config .runtime/cloud-devices.json --env-file .runtime/cloud-bridge.env` 安装独立桥接服务，状态和日志在 `.runtime/bridge-service/`，不影响 agent 的区块。
+
+使用 `--kind tunnel --ssh-config .runtime/ssh_config --ssh-host comput1` 安装独立 SSH 隧道，状态在 `.runtime/tunnel-service/`。SSH 配置中应设置本地端口转发、专用密钥、`BatchMode yes`、`StrictHostKeyChecking yes`、`ExitOnForwardFailure yes` 和连接保活；隧道不加载 agent 的 env 文件。
 
 macOS 可用 `scripts/install_launchd.py` 安装用户级服务。Windows 可在任务计划程序中用当前用户运行 `.venv\Scripts\remote-commander.exe agent --config 绝对路径`，配置环境变量并隐藏窗口。
 

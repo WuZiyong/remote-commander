@@ -76,6 +76,7 @@ class RegisteredDevice:
     id: str
     port: int
     secret: str = field(repr=False)
+    owner: str = ""
     last_seen: float = 0
     connected: bool = False
 
@@ -146,11 +147,34 @@ class Registry:
             )
             db.executemany("INSERT INTO settings VALUES (?,?)", settings.items())
         path.chmod(0o600)
-        return cls(path)
+        registry = cls(path)
+        registry.migrate_owners()
+        return registry
 
     def settings(self):
         with self.db() as db:
             return dict(db.execute("SELECT key,value FROM settings"))
+
+    def migrate_owners(self):
+        """Additive, idempotent migration; retain every legacy identity and route."""
+        with self.db() as db:
+            db.execute("BEGIN IMMEDIATE")
+            owner = db.execute("SELECT value FROM settings WHERE key='owner'").fetchone()[0]
+            for table in ("devices", "invites"):
+                columns = {r[1] for r in db.execute(f"PRAGMA table_info({table})")}
+                if "owner" not in columns:
+                    db.execute(f"ALTER TABLE {table} ADD COLUMN owner TEXT")
+                    db.execute(f"UPDATE {table} SET owner=?", (owner,))
+                db.execute(f"CREATE INDEX IF NOT EXISTS {table}_owner ON {table}(owner)")
+
+    def owner_for_device(self, device_id):
+        with self.db() as db:
+            row = db.execute(
+                "SELECT owner FROM devices WHERE id=? AND revoked=0", (device_id,)
+            ).fetchone()
+            if not row:
+                raise PermissionError("Device unavailable")
+            return row[0]
 
     def sync_keys(self):
         import fcntl
@@ -193,7 +217,7 @@ class Registry:
             options += f',port-forwarding,permitopen="127.0.0.1:1",permitlisten="127.0.0.1:{port}"'
         return f'{options},command="{escaped}" {public_key(key)} remote-commander-registry'
 
-    def invite(self, device_id, output, ttl=1800):
+    def invite(self, device_id, output, ttl=1800, *, owner=None):
         if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_-]{0,47}", device_id):
             raise ValueError("Device ID must contain 1..48 letters, digits, underscores or hyphens")
         if not 60 <= ttl <= 3600:
@@ -202,10 +226,21 @@ class Registry:
         if output.exists():
             raise ValueError("Invite output already exists")
         settings = self.settings()
+        owner = owner or settings["owner"]
+        if not re.fullmatch(r"[a-f0-9-]{32,36}", owner):
+            raise ValueError("Invalid owner identity")
+        # Tenant names are globally unique before reaching SSH and process sessions.
+        if owner != settings["owner"]:
+            device_id = "u" + owner.replace("-", "") + "_" + device_id
         with self.db() as db:
             if db.execute("SELECT 1 FROM devices WHERE id=?", (device_id,)).fetchone():
                 raise ValueError("Device ID already registered; use a new ID")
-            if db.execute("SELECT count(*) FROM devices WHERE revoked=0").fetchone()[0] >= 64:
+            if (
+                db.execute(
+                    "SELECT count(*) FROM devices WHERE revoked=0 AND owner=?", (owner,)
+                ).fetchone()[0]
+                >= 64
+            ):
                 raise ValueError("Device limit reached")
         with tempfile.TemporaryDirectory(dir=self.path.parent) as temporary:
             key = Path(temporary) / "bootstrap"
@@ -218,13 +253,21 @@ class Registry:
         expires = time.time() + ttl
         with self.db() as db:
             db.execute(
-                "INSERT INTO invites VALUES (?,?,?,?,?,0)",
-                (invite_id, device_id, hashlib.sha256(secret.encode()).hexdigest(), pub, expires),
+                "INSERT INTO invites (id,device_id,secret_hash,public_key,expires,used,owner) "
+                "VALUES (?,?,?,?,?,0,?)",
+                (
+                    invite_id,
+                    device_id,
+                    hashlib.sha256(secret.encode()).hexdigest(),
+                    pub,
+                    expires,
+                    owner,
+                ),
             )
         self.sync_keys()
         profile = dict(
             version=1,
-            owner=settings["owner"],
+            owner=owner,
             invite_id=invite_id,
             secret=secret,
             device_id=device_id,
@@ -240,7 +283,7 @@ class Registry:
             "device_id": device_id,
             "invite_file": str(output),
             "expires": expires,
-            "owner": settings["owner"],
+            "owner": owner,
         }
 
     def accept(self, invite_id, request):
@@ -251,7 +294,7 @@ class Registry:
         with self.db() as db:
             db.execute("BEGIN IMMEDIATE")
             invite = db.execute("SELECT * FROM invites WHERE id=?", (invite_id,)).fetchone()
-            owner = db.execute("SELECT value FROM settings WHERE key='owner'").fetchone()[0]
+            owner = invite["owner"] if invite else None
             if not invite or invite["used"] or invite["expires"] <= time.time():
                 raise PermissionError("Invite expired or already used")
             if request.get("owner") != owner or not hmac.compare_digest(
@@ -259,7 +302,12 @@ class Registry:
                 hashlib.sha256(request.get("secret", "").encode()).hexdigest(),
             ):
                 raise PermissionError("Wrong account or pairing secret")
-            if db.execute("SELECT count(*) FROM devices WHERE revoked=0").fetchone()[0] >= 64:
+            if (
+                db.execute(
+                    "SELECT count(*) FROM devices WHERE revoked=0 AND owner=?", (owner,)
+                ).fetchone()[0]
+                >= 64
+            ):
                 raise ValueError("Device limit reached")
             occupied = {r[0] for r in db.execute("SELECT port FROM devices")}
             port = next(
@@ -268,8 +316,8 @@ class Registry:
             if port is None:
                 raise ValueError("No available registration port")
             db.execute(
-                "INSERT INTO devices (id,public_key,token,port,created) VALUES (?,?,?,?,?)",
-                (invite["device_id"], key, token, port, time.time()),
+                "INSERT INTO devices (id,public_key,token,port,created,owner) VALUES (?,?,?,?,?,?)",
+                (invite["device_id"], key, token, port, time.time(), owner),
             )
             db.execute("UPDATE invites SET used=1 WHERE id=?", (invite_id,))
         self.sync_keys()
@@ -284,13 +332,16 @@ class Registry:
         except OSError:
             return False
 
-    def devices(self):
+    def devices(self, owner=None):
+        owner = owner or self.settings()["owner"]
         with self.db() as db:
             return {
                 r["id"]: RegisteredDevice(
-                    r["id"], r["port"], r["token"], r["last_seen"], bool(r["connected"])
+                    r["id"], r["port"], r["token"], r["owner"], r["last_seen"], bool(r["connected"])
                 )
-                for r in db.execute("SELECT * FROM devices WHERE revoked=0 ORDER BY created")
+                for r in db.execute(
+                    "SELECT * FROM devices WHERE revoked=0 AND owner=? ORDER BY created", (owner,)
+                )
             }
 
     def identities(self):
@@ -320,11 +371,13 @@ class Registry:
                 (device_id, connection_id),
             )
 
-    def revoke(self, device_id):
+    def revoke(self, device_id, *, owner=None):
+        owner = owner or self.settings()["owner"]
         with self.db() as db:
             if (
                 db.execute(
-                    "UPDATE devices SET revoked=1,connected=0 WHERE id=?", (device_id,)
+                    "UPDATE devices SET revoked=1,connected=0 WHERE id=? AND owner=?",
+                    (device_id, owner),
                 ).rowcount
                 != 1
             ):
@@ -377,6 +430,7 @@ def main():
     for name in ["accept", "channel", "revoke"]:
         commands.add_parser(name).add_argument("id")
     commands.add_parser("list")
+    commands.add_parser("migrate", help="Back up and add per-device ownership")
     args = parser.parse_args()
     try:
         if args.mode == "init":
@@ -392,6 +446,16 @@ def main():
             print(json.dumps({"owner": registry.settings()["owner"]}))
             return
         registry = Registry(args.db)
+        if args.mode == "migrate":
+            backup = registry.path.with_name(
+                registry.path.name + ".before-owners-" + uuid.uuid4().hex
+            )
+            backup.touch(mode=0o600, exist_ok=False)
+            with registry.db() as source, sqlite3.connect(backup) as target:
+                source.backup(target)
+            registry.migrate_owners()
+            print(json.dumps({"migrated": True, "backup": str(backup)}))
+            return
         if args.mode == "invite":
             result = registry.invite(args.device_id, args.output, args.ttl)
             if args.bundle:
@@ -405,13 +469,14 @@ def main():
             try:
                 read_message(sys.stdin)
                 registry.heartbeat(args.id, connection_id, opening=True)
-                device = registry.devices()[args.id]
+                owner = registry.owner_for_device(args.id)
+                device = registry.devices(owner)[args.id]
                 print(
                     json.dumps(
                         {
                             "status": "ready",
                             "port": device.port,
-                            "owner": registry.settings()["owner"],
+                            "owner": owner,
                             "device_id": args.id,
                         }
                     ),

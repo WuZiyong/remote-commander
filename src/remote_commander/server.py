@@ -15,7 +15,7 @@ from .runtime import Gateway, Runtime
 log = logging.getLogger("remote_commander.audit")
 
 
-def create_server(runtime: Runtime | Gateway, hosts: list[str] | None = None) -> FastMCP:
+def create_server(runtime: Runtime | Gateway, hosts: list[str] | None = None, **options) -> FastMCP:
     mcp = FastMCP(
         "Remote Commander",
         instructions=(
@@ -24,6 +24,7 @@ def create_server(runtime: Runtime | Gateway, hosts: list[str] | None = None) ->
             "Process output cursors are absolute byte offsets; poll until state=finished. "
             "Shell execution has the agent OS account's permissions."
         ),
+        **options,
         stateless_http=True,
         json_response=True,
         transport_security=TransportSecuritySettings(

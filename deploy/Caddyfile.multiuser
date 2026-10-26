@@ -1,0 +1,15 @@
+# Run on the SAME AIP gateway. Replace this with a real hostname/certificate setup.
+# Forward the complete portal + OAuth surface, not only /mcp.
+remote.gateway.example {
+    request_body {
+        max_size 4MB
+    }
+    # Access logging is intentionally not enabled: OAuth query strings are sensitive.
+    reverse_proxy 127.0.0.1:8890 {
+        header_up Host {host}
+        header_up -X-User-Id
+        header_up -X-Owner-Id
+        header_up -Oai-Authenticated-User-Id
+        flush_interval -1
+    }
+}

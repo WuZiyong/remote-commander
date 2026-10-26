@@ -35,7 +35,7 @@ AIP agent 和桥接由独立 supervisor 管理，退出后约五秒重新启动�
 .venv/bin/python scripts/install_linux_service.py --kind agent \
   --config .runtime/agent.json --env-file .runtime/agent.env
 .venv/bin/python scripts/install_linux_service.py --kind bridge \
-  --site https://remote-commander-wuzy.alight-elm-8729.chatgpt.site \
+  --site https://YOUR-PRIVATE-SITE.example \
   --gateway-config .runtime/devices.json --env-file .runtime/bridge.env
 ```
 

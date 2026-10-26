@@ -36,13 +36,17 @@ def merge_crontab(existing: str, command: str, begin: str = BEGIN, end: str = EN
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--kind", choices=["agent", "bridge", "tunnel"], default="agent")
+    parser.add_argument("--kind", choices=["agent", "bridge", "tunnel", "portal"], default="agent")
     parser.add_argument("--config")
     parser.add_argument("--site")
     parser.add_argument("--gateway-config")
     parser.add_argument("--env-file")
     parser.add_argument("--ssh-config")
     parser.add_argument("--ssh-host")
+    parser.add_argument("--issuer")
+    parser.add_argument("--accounts-state")
+    parser.add_argument("--port", type=int, default=8890)
+    parser.add_argument("--registration-open", action="store_true")
     args = parser.parse_args()
     if sys.platform != "linux":
         parser.error("This installer requires Linux")
@@ -54,6 +58,7 @@ def main():
             "agent": ".runtime/service",
             "bridge": ".runtime/bridge-service",
             "tunnel": ".runtime/tunnel-service",
+            "portal": ".runtime/portal-service",
         }[args.kind]
     )
     state.mkdir(parents=True, exist_ok=True)
@@ -63,6 +68,26 @@ def main():
         config = Path(args.ssh_config).resolve(strict=True)
         config.chmod(0o600)
         child = ["/usr/bin/ssh", "-F", str(config), "-NT", args.ssh_host]
+    elif args.kind == "portal":
+        if not args.issuer or not args.issuer.startswith("https://") or not args.gateway_config:
+            parser.error("A portal needs an HTTPS --issuer and --gateway-config")
+        config = Path(args.gateway_config).resolve(strict=True)
+        accounts = Path(args.accounts_state or project / ".runtime/accounts").resolve()
+        child = [
+            sys.executable,
+            "-m",
+            "remote_commander.portal",
+            "--gateway-config",
+            str(config),
+            "--state",
+            str(accounts),
+            "--issuer",
+            args.issuer,
+            "--port",
+            str(args.port),
+        ]
+        if args.registration_open:
+            child.append("--registration-open")
     elif not args.env_file:
         parser.error("--env-file is required for an agent or bridge")
     elif args.kind == "agent":
@@ -83,7 +108,7 @@ def main():
             "--gateway-config",
             str(config),
         ]
-    if args.kind != "tunnel":
+    if args.kind in {"agent", "bridge"}:
         secret = Path(args.env_file).resolve(strict=True)
         secret.chmod(0o600)
         child += ["--env-file", str(secret)]
@@ -106,7 +131,9 @@ def main():
     original = previous.stdout
     stamp = datetime.datetime.now(datetime.UTC).strftime("%Y%m%dT%H%M%SZ")
     (state / ("crontab.before." + stamp)).write_text(original)
-    marker = {"agent": "SERVICE", "bridge": "BRIDGE", "tunnel": "TUNNEL"}[args.kind]
+    marker = {"agent": "SERVICE", "bridge": "BRIDGE", "tunnel": "TUNNEL", "portal": "PORTAL"}[
+        args.kind
+    ]
     updated = merge_crontab(
         original, launch, f"# BEGIN REMOTE_COMMANDER_{marker}", f"# END REMOTE_COMMANDER_{marker}"
     )

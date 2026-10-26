@@ -1,3 +1,7 @@
+# Private compatibility relay only
+
+Do not share or publish an existing owner-private Site to enable multiple users. Use the native AIP portal in [the multi-user guide](../deploy/MULTIUSER.md). The example hosting manifest contains no project identity; create your own private project metadata before deployment.
+
 # Private ChatGPT MCP gateway
 
 This is the exact Worker source of the owner-private Remote Commander Site. The native Sites MCP integration provisions the ChatGPT plugin and manages OAuth, resource discovery and caller identity. It does not require a custom password or a second identity provider.

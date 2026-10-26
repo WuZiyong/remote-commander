@@ -136,15 +136,27 @@ class Gateway:
             return result.structuredContent
         raise ValueError("Remote agent did not return structured content")
 
+    async def call_for_owner(
+        self, owner: str, name: str, arguments: dict, device_id: str | None = None
+    ) -> dict:
+        if not owner or self.registry is None:
+            raise PermissionError("Authenticated owner required")
+        # Never select from the global/static map for a different owner.
+        legacy_owner = self.registry.settings()["owner"]
+        devices = self.devices if owner == legacy_owner else self.registry.devices(owner)
+        return await self._call_devices(devices, name, arguments, device_id)
+
     async def call(self, name: str, arguments: dict, device_id: str | None = None) -> dict:
-        devices = self.devices
+        return await self._call_devices(self.devices, name, arguments, device_id)
+
+    async def _call_devices(self, devices, name, arguments, device_id):
         if name == "list_devices":
 
             async def probe(device):
                 try:
                     async with asyncio.timeout(8):
                         info = await self.remote(device, "who_am_i", {})
-                    return {"id": device.id, "online": True, **info}
+                    return {**info, "id": device.id, "online": True}
                 except Exception:
                     return {
                         "id": device.id,

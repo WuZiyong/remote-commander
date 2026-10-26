@@ -9,6 +9,7 @@ from pathlib import Path
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--invite", help="Downloaded one-time pairing JSON")
     parser.add_argument("--root", action="append")
     parser.add_argument("--allow-shell", action="store_true")
     parser.add_argument("--port", type=int, default=8765)
@@ -17,7 +18,11 @@ def main():
         parser.error("Python 3.11+ is required")
     os.umask(0o077)
     root = Path(__file__).resolve().parent
-    invite = root / "pairing-invite.json"
+    invite = (
+        Path(args.invite).expanduser().resolve() if args.invite else root / "pairing-invite.json"
+    )
+    if not invite.is_file() and not (root / ".runtime/device/connection.json").exists():
+        parser.error("Download a pairing file from your account; supply --invite PATH")
     if invite.exists():
         invite.chmod(0o600)
     python = root / (".venv/Scripts/python.exe" if os.name == "nt" else ".venv/bin/python")
@@ -37,7 +42,7 @@ def main():
             "--profile",
             str(profile),
             "--invite",
-            str(root / "pairing-invite.json"),
+            str(invite),
             "--agent-port",
             str(args.port),
         ]

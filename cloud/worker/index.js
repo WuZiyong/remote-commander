@@ -12,10 +12,34 @@ const textResult = (value, isError = false) => ({
 const resultTool = {
   name: "get_operation_result",
   description: "Retrieve a pending remote operation by operation_id. Do not repeat a timed-out write or command.",
-  inputSchema: { type: "object", properties: { operation_id: { type: "string" } }, required: ["operation_id"], additionalProperties: false },
+  inputSchema: { type: "object", properties: { operation_id: { type: "string" }, detail: { type: "string", enum: ["compact", "full"], default: "compact", description: "Device identity detail." } }, required: ["operation_id"], additionalProperties: false },
   annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
 };
 const allTools = [...tools, resultTool];
+
+// Structured results carry the data once. Retain any distinct text or media blocks.
+export function presentToolResult(result, name, detail = "compact") {
+  const original = result.structuredContent;
+  if (result.isError || !original || typeof original !== "object" || Array.isArray(original)) return result;
+  const serialized = JSON.stringify(original);
+  const content = (result.content || []).filter((block) => {
+    if (block.type !== "text") return true;
+    try { return JSON.stringify(JSON.parse(block.text)) !== serialized; }
+    catch { return true; }
+  });
+  let structuredContent = original;
+  if (name === "list_devices" && detail !== "full" && Array.isArray(original.devices)) {
+    structuredContent = { ...original, devices: original.devices.map((device) => {
+      if (!device || typeof device.id !== "string" || typeof device.online !== "boolean") return device;
+      const item = { id: device.id, online: device.online };
+      if (device.name && device.name !== device.id) item.name = device.name;
+      if (device.system) item.system = device.system;
+      if (device.error) item.error = device.error;
+      return item;
+    }) };
+  }
+  return { ...result, content, structuredContent };
+}
 
 function to64(bytes) {
   let result = "";
@@ -65,10 +89,14 @@ async function cleanup(env, now) {
   // A claimed operation is never executed again after losing its worker.
   await env.DB.prepare("UPDATE relay_jobs SET status='uncertain' WHERE status='running' AND lease_until < ?").bind(now).run();
 }
-async function operation(env, id, owner) {
+async function operation(env, id, owner, detail = "compact") {
   const row = await env.DB.prepare("SELECT * FROM relay_jobs WHERE id=? AND owner=? AND expires>?").bind(id, owner, Date.now()).first();
   if (!row) return textResult({ error: "Unknown or expired operation" }, true);
-  if (row.status === "done") return await open(env, row.response, id + ":response");
+  if (row.status === "done") {
+    const result = await open(env, row.response, id + ":response");
+    const request = await open(env, row.payload, id + ":request");
+    return presentToolResult(result, request.name, detail);
+  }
   return textResult({ operation_id: id, state: row.status,
     instruction: row.status === "uncertain" ? "Worker connection was lost. Inspect remote state before retrying any write or command." : "Call get_operation_result with this operation_id; do not repeat this operation." }, row.status === "uncertain");
 }
@@ -116,8 +144,14 @@ export default {
         // Dispatch supplies this verified identity. Service bypass tokens do not establish user identity.
         const owner = request.headers.get("oai-authenticated-user-id");
         if (!owner) return error(-32001, "Authenticated Site owner identity required");
-        const name = rpc.params?.name, args = rpc.params?.arguments || {};
-        if (name === "get_operation_result") return reply(await operation(env, args.operation_id, owner));
+        const name = rpc.params?.name, args = { ...(rpc.params?.arguments || {}) };
+        let detail = "compact";
+        if (name === "list_devices" || name === "get_operation_result") {
+          detail = args.detail ?? "compact";
+          if (detail !== "compact" && detail !== "full") return error(-32602, "detail must be compact or full");
+          delete args.detail; // Presentation belongs to this entry point, not the remote agents.
+        }
+        if (name === "get_operation_result") return reply(await operation(env, args.operation_id, owner, detail));
         if (!tools.some((tool) => tool.name === name)) return error(-32602, "Unknown tool");
         const now = Date.now();
         await cleanup(env, now);
@@ -129,10 +163,10 @@ export default {
         if (!inserted.meta.changes) return reply(textResult({ error: "Remote queue full; operation was not queued" }, true));
         for (let i = 0; i < 80; i++) {
           const row = await env.DB.prepare("SELECT status FROM relay_jobs WHERE id=?").bind(id).first();
-          if (row?.status === "done" || row?.status === "uncertain") return reply(await operation(env, id, owner));
+          if (row?.status === "done" || row?.status === "uncertain") return reply(await operation(env, id, owner, detail));
           await delay(250);
         }
-        return reply(await operation(env, id, owner));
+        return reply(await operation(env, id, owner, detail));
       }
       if (url.pathname === "/") return new Response(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Remote Commander</title><style>body{font:18px system-ui;max-width:720px;margin:10vh auto;padding:24px;background:#101c27;color:#e6f0f4}h1{font-size:40px}p{line-height:1.6}code{color:#89dec3}</style><h1>Remote Commander</h1><p>你的私有远程工作入口。</p><p>在 ChatGPT 中启用此网站的 Remote Commander 插件，即可选择设备、操作文件、搜索和管理命令。</p><p>登录与 OAuth 由 ChatGPT Sites 管理。远程机器只建立出站连接；队列中的请求和结果使用 AES-GCM 加密并在 5 分钟后过期。</p><p>先调用 <code>list_devices</code>，再使用 <code>deviceId</code> 选择机器。</p>`, { headers: { "Content-Type": "text/html;charset=utf-8", "Cache-Control": "no-store" } });
       return json({ error: "Not found" }, 404);

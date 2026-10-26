@@ -51,6 +51,7 @@ The AIP OS administrator is trusted and can read gateway state. User isolation i
 
 The gateway stays on AIP. No replacement server is required. Use a dedicated HTTPS hostname on that gateway and the existing restricted SSH pairing endpoint.
 
+- [Public HTTPS deployment and live ChatGPT acceptance (2026-10-26)](docs/PUBLIC_HTTPS_ACCEPTANCE_20261026.md)
 - [Deployment, upgrade, backup, rollback](deploy/MULTIUSER.md)
 - [Security model and reporting](SECURITY.md)
 - [Existing private AIP installation](deploy/AIP.md)

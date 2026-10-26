@@ -428,7 +428,9 @@ class Boundary:
                     [
                         (b"cache-control", b"no-store"),
                         (b"x-content-type-options", b"nosniff"),
-                        (b"referrer-policy", b"no-referrer"),
+                        # Preserve Origin on same-origin browser form posts; suppress
+                        # referrers on OAuth redirects to a different origin.
+                        (b"referrer-policy", b"same-origin"),
                         (
                             b"content-security-policy",
                             csp,

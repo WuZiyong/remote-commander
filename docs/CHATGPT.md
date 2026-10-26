@@ -2,6 +2,8 @@
 
 The gateway operator must first deploy a publicly reachable HTTPS portal/MCP endpoint. A loopback staging URL, GitHub repository URL, or someone else's private Site is not a shared gateway endpoint.
 
+The operator's deployment is available at [remote.wuzy55.de](https://remote.wuzy55.de/), with [self-registration](https://remote.wuzy55.de/signup) and MCP URL `https://remote.wuzy55.de/mcp`. [Live HTTPS and ChatGPT acceptance](PUBLIC_HTTPS_ACCEPTANCE_20261026.md) was completed on 2026-10-26. Create your own account and pair your own device before authorizing ChatGPT.
+
 1. Register and sign in to your own Remote Commander portal account.
 2. Pair your own computer and verify it appears in that portal.
 3. In ChatGPT's custom MCP/plugin management, add the operator's HTTPS URL ending in `/mcp`.

@@ -68,8 +68,8 @@ class Accounts:
 
     @staticmethod
     def password_hash(password, salt):
-        if not isinstance(password, str) or not 12 <= len(password) <= 1024:
-            raise ValueError("Password must contain 12..1024 characters")
+        if not isinstance(password, str) or not 8 <= len(password) <= 1024:
+            raise ValueError("Password must contain 8..1024 characters")
         return hashlib.scrypt(password.encode(), salt=bytes.fromhex(salt), n=16384, r=8, p=1).hex()
 
     def register(self, username, password):

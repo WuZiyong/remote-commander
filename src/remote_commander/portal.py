@@ -135,7 +135,7 @@ class Portal:
                 + '">'
                 '<label>Username <input name="username" required maxlength="64" '
                 'autocomplete="username"></label>'
-                '<label>Password <input name="password" type="password" required minlength="12" '
+                '<label>Password <input name="password" type="password" required minlength="8" '
                 'maxlength="1024" autocomplete="'
                 + ("new-password" if mode == "signup" else "current-password")
                 + '"></label><button>'

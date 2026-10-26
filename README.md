@@ -8,7 +8,7 @@ Self-hosted MCP file, search, and terminal tools for Windows, macOS, and Linux.
 
 Ask the gateway operator for its **HTTPS portal URL**. The repository URL is source code, not a running shared service.
 
-1. Open the portal and select **Create account**. Use a unique username and a password of at least 12 characters.
+1. Open the portal and select **Create account**. Use a unique username and a password of at least 8 characters.
 2. Sign in, choose a device name, and download its one-time pairing file.
 3. On that machine, install Python 3.11+ and OpenSSH (`ssh` and `ssh-keygen`), then clone this repository:
 

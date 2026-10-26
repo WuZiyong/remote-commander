@@ -120,6 +120,31 @@ def test_separate_users_and_legacy_devices(portal, monkeypatch):
     assert b["device_id"] in portal.registry.devices(bob)
 
 
+def test_eight_character_password_signup_and_login(client):
+    password = "Ab3!xYz9"
+    page = client.get("/signup")
+    assert 'minlength="8"' in page.text
+    csrf = re.search('name="csrf" value="([^"]+)"', page.text)[1]
+    response = client.post(
+        "/signup", data={"csrf": csrf, "username": "eightchars", "password": password[:-1]}
+    )
+    assert response.status_code == 400
+    response = client.post(
+        "/signup", data={"csrf": csrf, "username": "eightchars", "password": password}
+    )
+    assert response.status_code == 303, response.text
+    assert form(client, "/logout").status_code == 303
+
+    page = client.get("/login")
+    assert 'minlength="8"' in page.text
+    csrf = re.search('name="csrf" value="([^"]+)"', page.text)[1]
+    response = client.post(
+        "/login", data={"csrf": csrf, "username": "eightchars", "password": password}
+    )
+    assert response.status_code == 303, response.text
+    assert client.get("/").status_code == 200
+
+
 def test_self_service_csrf_and_foreign_revoke(client, portal):
     signup(client)
     owner = portal.session(

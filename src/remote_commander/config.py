@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 from urllib.parse import urlparse
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class AgentConfig(BaseModel):
@@ -66,7 +66,14 @@ class Device(BaseModel):
 
 class GatewayConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    devices: list[Device] = Field(min_length=1)
+    devices: list[Device] = Field(default_factory=list)
+    registry_path: str | None = None
+
+    @model_validator(mode="after")
+    def check_source(self):
+        if not self.devices and not self.registry_path:
+            raise ValueError("A gateway needs devices or a registry")
+        return self
 
     @field_validator("devices")
     @classmethod

@@ -93,7 +93,7 @@ gateway 默认走 stdio。客户端通用配置如下；替换为真实绝对路
 
 ChatGPT 入口采用 **owner-private Sites MCP 插件**，OAuth、资源发现与登录由 Sites 平台管理，不另建密码系统。源码在 `cloud/`；已部署入口和插件信息见交付说明。通过 Sites 发布会生成对应私有插件，可以在 ChatGPT 中启用它来选择设备和调用工具。
 
-常驻桥接通过出站 HTTPS 连接私有入口。当前部署运行在 AIP 的 erebos，由 AIP 的专用 SSH 隧道直接连接 comput1；**Mac 关机不影响 comput1**。AIP 的 agent、桥接和隧道，以及 comput1 的 agent，均已配置开机启动和故障恢复。Mac 在线时可通过自己的反向 SSH 隧道作为可选设备接入，详见 [AIP 部署说明](deploy/AIP.md)。
+常驻桥接通过出站 HTTPS 连接私有入口。当前部署运行在 AIP 的 erebos；Mac、comput1 和 Windows 设备均主动连接 AIP，并由持久注册表自动发现。**Mac 关机不影响 comput1**。设备初次配对后，无需修改 AIP 设备配置或重启桥接，详见 [设备接入说明](deploy/ENROLLMENT.md) 和 [AIP 部署说明](deploy/AIP.md)。
 
 云端队列中的请求和结果使用 AES-256-GCM 加密，五分钟后过期；桥接失联的已领取操作不会自动重新执行。慢操作通过新增的 `get_operation_result` 获取，避免重复写文件或启动命令。
 

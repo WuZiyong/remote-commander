@@ -7,6 +7,8 @@ __pycache__/
 build/
 dist/
 .env
+pairing-invite.json
+*.rcinvite.json
 config.local.json
 devices.local.json
 *.log

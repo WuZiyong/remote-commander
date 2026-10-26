@@ -95,9 +95,30 @@ class Runtime:
 
 class Gateway:
     def __init__(self, config: GatewayConfig):
-        self.devices = {device.id: device for device in config.devices}
+        self.static_devices = {device.id: device for device in config.devices}
+        self.registry = None
+        if config.registry_path:
+            from .registry import Registry
+
+            self.registry = Registry(config.registry_path)
+
+    @property
+    def devices(self):
+        # Enrollment/revocation takes effect without restarting the bridge.
+        if self.registry is None:
+            return self.static_devices
+        # A revoked device must never fall back to an old static route with the same ID.
+        registered = self.registry.identities()
+        return {
+            **{key: value for key, value in self.static_devices.items() if key not in registered},
+            **self.registry.devices(),
+        }
 
     async def remote(self, device, name: str, arguments: dict) -> dict:
+        from .registry import RegisteredDevice
+
+        if isinstance(device, RegisteredDevice) and not device.online:
+            raise ValueError(f"{device.id}: Device offline; waiting for its connection")
         # Agent sessions live in the runtime, independent of HTTP/MCP session lifetime.
         async with httpx.AsyncClient(
             headers={"Authorization": f"Bearer {device.token()}"},
@@ -116,6 +137,7 @@ class Gateway:
         raise ValueError("Remote agent did not return structured content")
 
     async def call(self, name: str, arguments: dict, device_id: str | None = None) -> dict:
+        devices = self.devices
         if name == "list_devices":
 
             async def probe(device):
@@ -130,14 +152,14 @@ class Gateway:
                         "error": "Connection failed; check URL, token and agent service",
                     }
 
-            return {"devices": await asyncio.gather(*(probe(d) for d in self.devices.values()))}
+            return {"devices": await asyncio.gather(*(probe(d) for d in devices.values()))}
         if device_id is None:
-            if len(self.devices) != 1:
+            if len(devices) != 1:
                 raise ValueError("deviceId is required with multiple configured devices")
-            device_id = next(iter(self.devices))
-        if device_id not in self.devices:
+            device_id = next(iter(devices))
+        if device_id not in devices:
             raise ValueError(f"Unknown deviceId: {device_id}")
-        return await self.remote(self.devices[device_id], name, arguments)
+        return await self.remote(devices[device_id], name, arguments)
 
     def close(self):
         pass

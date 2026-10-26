@@ -1,10 +1,10 @@
 """Single-instance user service supervisor, suitable for cron @reboot on Linux."""
 
 import argparse
-import fcntl
 import os
 import signal
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -20,10 +20,20 @@ def main():
     os.umask(0o077)
     state = Path(args.state).resolve()
     state.mkdir(parents=True, exist_ok=True)
-    lock = (state / "supervisor.lock").open("a")
+    lock = (state / "supervisor.lock").open("a+")
     try:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:
+        if sys.platform == "win32":
+            import msvcrt
+
+            lock.write("0")
+            lock.flush()
+            lock.seek(0)
+            msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (BlockingIOError, PermissionError):
         return
     (state / "supervisor.pid").write_text(str(os.getpid()))
     child = None
@@ -44,7 +54,11 @@ def main():
                 os.replace(path, state / "service.previous.log")
             with path.open("ab", buffering=0) as log:
                 child = subprocess.Popen(
-                    command, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT
+                    command,
+                    stdin=subprocess.DEVNULL,
+                    stdout=log,
+                    stderr=subprocess.STDOUT,
+                    creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
                 )
                 (state / "child.pid").write_text(str(child.pid))
                 while child.poll() is None:
